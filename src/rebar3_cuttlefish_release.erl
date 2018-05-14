@@ -47,6 +47,24 @@ do(State) ->
                              throw({no_cuttlefish_escript, rebar_dir:base_dir(State)})
                      end
              end,
+    EnableBinScriptTemplate = case lists:keyfind(enable_bin_script_template, 1, CFConf) of
+                                  false ->
+                                      true;
+                                  {enable_bin_script_template, false} ->
+                                      false;
+                                  {enable_bin_script_template, true}  ->
+                                      true
+                              end,
+    EnableNodeTool = case lists:keyfind(enable_nodetool, 1, CFConf) of
+                         false ->
+                             true;
+                         {enable_nodetool, false} ->
+                             false;
+                         {enable_nodetool, true} ->
+                             true
+                     end,
+
+    OverlayFlags = [EnableNodeTool, EnableBinScriptTemplate],
 
     {release, {Name, _Vsn}, _} = lists:keyfind(release, 1, Relx),
     CFFile = case lists:keyfind(file_name, 1, CFConf) of
@@ -64,13 +82,13 @@ do(State) ->
     Overlays1 = case {lists:keyfind(schema_discovery, 1, CFConf),
                       lists:keyfind(overlay, 1, Relx)} of
                     {{schema_discovery, false}, {overlay, Overlays}} ->
-                        Overlays ++ overlays(Name, CuttlefishBin, Overlays, []);
+                        Overlays ++ overlays(Name, CuttlefishBin, Overlays, [], OverlayFlags);
                     {{schema_discovery, false}, _} ->
-                        overlays(Name, CuttlefishBin, [], []);
+                        overlays(Name, CuttlefishBin, [], [], OverlayFlags);
                     {_, {overlay, Overlays}} when is_list(Overlays) ->
-                        Overlays ++ overlays(Name, CuttlefishBin, Overlays, AllSchemas);
+                        Overlays ++ overlays(Name, CuttlefishBin, Overlays, AllSchemas, OverlayFlags);
                     _ ->
-                        overlays(Name, CuttlefishBin, [], AllSchemas)
+                        overlays(Name, CuttlefishBin, [], AllSchemas, OverlayFlags)
                 end,
 
     ConfFile = filename:join("config", atom_to_list(Name)++".conf"),
@@ -123,20 +141,31 @@ schemas(Apps) ->
                       filelib:wildcard(filename:join([Dir, "{priv,schema}", "*.schema"]))
                   end, Apps) ++ filelib:wildcard(filename:join(["{priv,schema}", "*.schema"])).
 
-overlays(Name, Cuttlefish, Overlays, Schemas) ->
-    BinScriptTemplate = filename:join([code:priv_dir(rebar3_cuttlefish), "bin_script"]),
-    NodeTool = filename:join([code:priv_dir(rebar3_cuttlefish), "nodetool"]),
+overlays(Name, Cuttlefish, Overlays, Schemas, [UseNodeTool, UseBinScriptTemplate]) ->
+    NodeToolCopy = case UseNodeTool of
+               false ->
+                       [];
+               true ->
+                       NodeTool = filename:join([code:priv_dir(rebar3_cuttlefish), "nodetool"]),
+                       [{copy, NodeTool, filename:join(["bin", "nodetool"])}]
+               end,
+    BinScriptTemplate = case UseBinScriptTemplate of
+                            false ->
+                                [];
+                            true ->
+                                BinScript = filename:join(["bin", Name]),
+                                [{template, filename:join([code:priv_dir(rebar3_cuttlefish), "bin_script"]),  BinScript}]
+                        end,
     InstallUpgrade = filename:join([code:priv_dir(rebar3_cuttlefish), "install_upgrade_escript"]),
-    BinScript = filename:join(["bin", Name]),
     Overlays1 = [ list_to_binary(F) || {_, F, _} <- Overlays],
     SchemaOverlays = [{template, Schema, filename:join(["share", "schema", filename:basename(Schema)])}
                       || Schema <- Schemas, not is_overlay(Schema, Overlays1)],
-    [{copy, Cuttlefish, "bin/cuttlefish"},
+    NOverlay = [{copy, Cuttlefish, "bin/cuttlefish"},
      {mkdir, "share"},
      {mkdir, "share/schema"},
-     {copy, NodeTool, filename:join(["bin", "nodetool"])},
-     {copy, InstallUpgrade, filename:join(["bin", "install_upgrade.escript"])},
-     {template, BinScriptTemplate, BinScript} | SchemaOverlays].
+     {copy, InstallUpgrade, filename:join(["bin", "install_upgrade.escript"])} | SchemaOverlays],
+
+    lists:merge([NOverlay, NodeToolCopy, BinScriptTemplate]).
 
 is_overlay(SchemaS, Overlays) ->
     Schema = list_to_binary(SchemaS),

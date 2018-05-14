@@ -12,7 +12,7 @@ Now the cuttlefish release and tar providers will be run when the `release` or `
 
     $ rebar3 release
 
-The plugin provider will tell relx to create the dirs `share/schema` in the release, copy the cuttlefish escript to `bin/` and discover all schema files in the project apps and their dependencies. All you should need for your relx config is:
+The plugin provider will tell relx to create the dirs `share/schema` in the release, copy the cuttlefish escript to `bin/` and discover all schema files in the project apps and their dependencies. Besides that, by default a `nodetool` and `script bin template` will be copy to `bin/`. All you should need for your relx config is:
 
 ```erlang
 {relx, [{release, {<name>, "0.1.0"},
@@ -42,11 +42,28 @@ The Cuttlefish plugin can take some configuration values:
 ```erlang
 {cuttlefish,
  [{file_name, "<release>.conf.example"},
-  {schema_discovery, false}]}
+  {schema_discovery, false},
+  {enable_nodetool, true},
+  {enable_bin_script_template, true}
+  ]}
 ```
 
 - `file_name` will define the file the config is written to. (`<release>.conf` is the default)
 - `schema_discovery` can be set to true or false to either enable or disalbe discovering all schema files in libraries. (`true` is the default).
+- `enable_nodetool` can be set to false or true to either copy user defined `nodetool` or rebar3_cuttlefish (`priv/nodetool`). (`true` is the default).
+- `enable_bin_script_template` can be set to false or true to either copy user defined `script template` or rebar3_cuttlefish (`priv/bin_script`). (`true` is the default).
+
+When `enable_nodetool` or `enable_bin_script_template` is false, the user should provide using relx. Example:
+
+```erlang
+{relx, [{release, {<name>, "0.1.0"},
+        [<app_name>]},
+
+        ...
+
+        {overlay, [{template, "rel/myrunner", "bin/<app_name>"},
+                   {template, "rel/mynodetool", "bin/nodetool"}]}]}.
+```
 
 ## Running Multiple Nodes
 
